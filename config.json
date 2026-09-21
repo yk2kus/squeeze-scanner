@@ -1,0 +1,14 @@
+{
+  "symbols": [],
+  "scan_all_usdt_perpetuals": true,
+  "kline_interval": "1m",
+  "score_alert_threshold": 7,
+  "repeat_alert_minutes": 30,
+  "price_window_minutes": 3,
+  "oi_window_minutes": 3,
+  "liquidation_window_minutes": 3,
+  "volume_window_minutes": 5,
+  "min_24h_quote_volume_usdt": 1000000,
+  "telegram_enabled": true,
+  "db_path": "squeeze.db"
+}

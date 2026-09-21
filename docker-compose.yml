@@ -1,0 +1,14 @@
+services:
+  squeeze:
+    build: .
+    container_name: squeeze-scanner
+    restart: unless-stopped
+    ports:
+      - "8000:8000"          # open http://localhost:8000/squeeze.html
+    volumes:
+      - squeeze-data:/data   # persists squeeze.db + reports across restarts
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+volumes:
+  squeeze-data:
