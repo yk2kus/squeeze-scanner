@@ -212,9 +212,18 @@ async def get_symbols(session):
             async with session.get(BINANCE_REST+"/fapi/v1/exchangeInfo") as r:
                 d=await r.json()
             if isinstance(d,dict) and "symbols" in d:
-                return [x["symbol"].lower() for x in d["symbols"]
-                        if x["status"]=="TRADING" and x["contractType"]=="PERPETUAL"
-                        and x["quoteAsset"]=="USDT"]
+                perps=[x["symbol"].lower() for x in d["symbols"]
+                       if x["status"]=="TRADING" and x["contractType"]=="PERPETUAL"
+                       and x["quoteAsset"]=="USDT"]
+                # liquidity filter (one ticker/24hr call) to drop dead markets
+                try:
+                    async with session.get(BINANCE_REST+"/fapi/v1/ticker/24hr") as r2:
+                        tk=await r2.json()
+                    minv=CFG.get("min_24h_quote_volume_usdt",1_000_000)
+                    vol={x["symbol"].lower():float(x.get("quoteVolume",0)) for x in tk}
+                    perps=[s for s in perps if vol.get(s,0)>=minv]
+                except Exception: pass
+                return perps
             print(f"exchangeInfo not ready (attempt {attempt+1}): {str(d)[:80]}")
         except Exception as e:
             print(f"exchangeInfo error (attempt {attempt+1}): {e}")
@@ -245,11 +254,24 @@ async def ws_group(streams):
             print("WS reconnect:",e); await asyncio.sleep(2)
 
 async def oi_loop(symbols):
+    # The original polled OI for EVERY symbol every 30s (~1000 REST calls/min),
+    # which gets the IP permanently rate-limit-banned (HTTP 418) and then no
+    # scoring can happen. OI only matters for coins that are actually MOVING
+    # (a squeeze needs OI falling WHILE price rises), so poll OI only for movers
+    # or coins already in a non-NORMAL phase. Hard-capped and slower -> stays
+    # far under Binance limits.
     async with aiohttp.ClientSession() as se:
         while True:
-            for i in range(0,len(symbols),20):
-                await asyncio.gather(*(sample_oi(se,s) for s in symbols[i:i+20]))
-            await asyncio.sleep(30)
+            cands=[]
+            for s in symbols:
+                st=state[s]
+                if st["phase"]!="NORMAL": cands.append(s); continue
+                if len(st["prices"])>=4 and abs(pct(st["prices"][0][1],st["prices"][-1][1]))>=0.6:
+                    cands.append(s)
+            cands=cands[:40]                      # hard cap on REST load
+            for i in range(0,len(cands),20):
+                await asyncio.gather(*(sample_oi(se,s) for s in cands[i:i+20]))
+            await asyncio.sleep(45)
 async def sample_oi(se,sym):
     try:
         async with se.get(BINANCE_REST+"/fapi/v1/openInterest",params={"symbol":sym.upper()}) as r:
