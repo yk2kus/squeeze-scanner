@@ -280,11 +280,23 @@ async def sample_oi(se,sym):
     except Exception: pass
 
 async def scoring_loop():
+    tick=0
     while True:
         for sym in list(state.keys()):
             try: await classify(sym)
             except Exception as e: print("classify",sym,e)
         track_events()
+        tick+=1
+        if tick%6==0:   # ~every 60s: diagnostic heartbeat
+            scored=[(start_score(state[s])[0],s) for s in state
+                    if len(state[s]["prices"])>=4]
+            with_oi=sum(1 for s in state if len(state[s]["oi"])>=3)
+            movers=sum(1 for s in state if len(state[s]["prices"])>=4
+                       and abs(pct(state[s]["prices"][0][1],state[s]["prices"][-1][1]))>=0.6)
+            if scored:
+                top=sorted(scored,reverse=True)[:3]
+                print(f"[hb] symbols_with_price={len(scored)} with_oi={with_oi} "
+                      f"movers>=0.6%={movers} top_scores={[(f'{sc}',sy) for sc,sy in top]}",flush=True)
         await asyncio.sleep(10)
 
 async def main():
