@@ -118,12 +118,17 @@ export TELEGRAM_CHAT_ID="..."
 
 Without these, the scanner still runs and stores everything locally.
 
-## Not containerized
+## Run with Docker (recommended for another PC / 24-7)
 
-This runs directly on the host (venv + keeper + cron). There is no Dockerfile.
-Containerizing is straightforward if wanted — a slim Python image with
-`aiohttp`/`websockets`, `CMD ["python","scanner_v2.py"]`, and a bind-mount for
-`squeeze.db` — but it is not required to run.
+```bash
+docker compose up -d
+# then open http://localhost:8000/squeeze.html
+```
+
+The container runs the scanner, regenerates the report every 60 s, and serves it
+on port 8000. Data (DB, reports, cached symbol list) persists in the
+`squeeze-data` volume across restarts. Telegram tokens are optional env vars.
+Start it once and leave it running (see Operating rules below).
 
 ## Rate limits — important
 
