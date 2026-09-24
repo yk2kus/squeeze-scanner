@@ -6,3 +6,4 @@ __pycache__/
 reports/
 .keep.lock
 reports_scanner.log
+symbols_cache.json

@@ -203,11 +203,24 @@ async def alert(sym,head,s,ss,ex,reasons,lm,vm,tk):
     except Exception as e: print("tg:",e)
 
 # --------------------------------------------------------- ws / loops
+SYMBOLS_CACHE=os.getenv("SYMBOLS_CACHE","symbols_cache.json")
+SYMBOLS_TTL=int(os.getenv("SYMBOLS_TTL","86400"))   # 24h: refresh symbol list at most once/day
+
 async def get_symbols(session):
     if CFG["symbols"]: return [x.lower() for x in CFG["symbols"]]
-    # exchangeInfo can be rate-limited (returns {"code":...} with no "symbols").
-    # Retry with backoff instead of crashing.
-    for attempt in range(35):
+    # RULE: minimise REST. The symbol list changes rarely, so cache it to disk and
+    # reuse it. This means exchangeInfo is hit ONCE per day, not on every restart --
+    # the single biggest cause of self-inflicted rate-limit bans.
+    try:
+        if os.path.exists(SYMBOLS_CACHE):
+            d=json.load(open(SYMBOLS_CACHE))
+            if time.time()-d.get("ts",0)<SYMBOLS_TTL and d.get("symbols"):
+                print(f"symbols: {len(d['symbols'])} from cache "
+                      f"(age {(time.time()-d['ts'])/3600:.1f}h, no REST call)",flush=True)
+                return d["symbols"]
+    except Exception: pass
+    # cache miss / stale -> fetch once (with backoff for a lingering ban), then cache
+    for attempt in range(60):
         try:
             async with session.get(BINANCE_REST+"/fapi/v1/exchangeInfo") as r:
                 d=await r.json()
@@ -215,7 +228,6 @@ async def get_symbols(session):
                 perps=[x["symbol"].lower() for x in d["symbols"]
                        if x["status"]=="TRADING" and x["contractType"]=="PERPETUAL"
                        and x["quoteAsset"]=="USDT"]
-                # liquidity filter (one ticker/24hr call) to drop dead markets
                 try:
                     async with session.get(BINANCE_REST+"/fapi/v1/ticker/24hr") as r2:
                         tk=await r2.json()
@@ -223,10 +235,12 @@ async def get_symbols(session):
                     vol={x["symbol"].lower():float(x.get("quoteVolume",0)) for x in tk}
                     perps=[s for s in perps if vol.get(s,0)>=minv]
                 except Exception: pass
+                try: json.dump({"ts":time.time(),"symbols":perps},open(SYMBOLS_CACHE,"w"))
+                except Exception: pass
                 return perps
-            print(f"exchangeInfo not ready (attempt {attempt+1}): {str(d)[:80]}")
+            print(f"exchangeInfo rate-limited (attempt {attempt+1}); waiting…",flush=True)
         except Exception as e:
-            print(f"exchangeInfo error (attempt {attempt+1}): {e}")
+            print(f"exchangeInfo error (attempt {attempt+1}): {e}",flush=True)
         await asyncio.sleep(60)
     raise RuntimeError("could not fetch exchangeInfo after retries")
 

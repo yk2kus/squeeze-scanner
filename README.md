@@ -137,3 +137,25 @@ The scanner uses public WebSockets for live data, but polls `openInterest` and
 For education and research only. Not financial advice. A high score is a
 resemblance to a historical squeeze pattern, not a forecast. Validate against the
 evaluation database before trusting any signal.
+
+## Operating rules — run on WebSocket, avoid IP bans (IMPORTANT)
+
+Binance has two separate systems: **WebSocket** (`fstream.binance.com`, *no rate
+limit*) and **REST** (`fapi.binance.com`, ~2400 weight/min per IP — this is what
+gets your IP banned with HTTP 418). The rules:
+
+1. **WebSocket-first.** Price, trades/CVD, liquidations, mark price and funding
+   all come over WebSocket — unlimited. Never poll these over REST.
+2. **REST only for open interest**, which has no WebSocket stream. Poll it gently:
+   single instance, filtered universe, and only for coins actually moving.
+3. **Cache the symbol list.** `exchangeInfo` is called at most once per day and
+   cached to disk (`symbols_cache.json`). It is the biggest ban trigger because
+   naive setups call it on every restart.
+4. **One instance only.** Never run two scanners against the same IP.
+5. **Start once, leave it running.** Do NOT restart repeatedly to "check" it —
+   repeated restarts re-hit REST and get the IP banned. Watch it via the report
+   or `docker logs`, not by restarting.
+6. **For 24/7 reliability, run on a small cloud VPS** with its own clean IP, so
+   your home IP is never involved.
+
+Following these, a single instance stays well under Binance's limits indefinitely.
