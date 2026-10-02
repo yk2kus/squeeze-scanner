@@ -7,3 +7,8 @@ reports/
 .keep.lock
 reports_scanner.log
 symbols_cache.json
+
+# crowd collector cache/lock
+binance_symbols.json
+*.lock
+candidates.txt
